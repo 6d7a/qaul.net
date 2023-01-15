@@ -38,7 +38,7 @@ parts:
   libqaul:
     plugin: nil
     source: https://github.com/qaul/qaul.net.git
-    source-branch: libqaul-snap-logs
+    source-branch: libqaul-snap-debug
     after: [ rust-deps ]
     build-packages:
       - protobuf-compiler
@@ -48,7 +48,10 @@ parts:
     override-build: |
       export PATH="$HOME/.cargo/bin:$PATH"
       cargo --version
+
+      cd rust/libqaul || exit 1
       
+      rm build.rs
       cargo build --release
       
       cd ..
