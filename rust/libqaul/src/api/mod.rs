@@ -19,6 +19,8 @@ use std::thread;
 use crate::rpc::sys::Sys;
 use crate::rpc::Rpc;
 
+use pretty_env_logger;
+
 /// C API module
 mod c;
 
@@ -31,7 +33,11 @@ mod android;
 ///
 /// Provide the location for storage, all data of qaul will be saved there.
 pub fn start(storage_path: String) {
+    pretty_env_logger::init();
+    log::info!("libqaul API start");
+
     self::start_with_config(storage_path, None);
+    log::info!("libqaul API starte done");
 }
 
 /// start libqaul in an own thread
@@ -41,13 +47,19 @@ pub fn start(storage_path: String) {
 ///   the following options can be provided:
 ///   * Internet module listening port. By default this port is randomly assigned.
 pub fn start_with_config(storage_path: String, config: Option<BTreeMap<String, String>>) {
+    println!("println libqaul API start_with_config");
+    log::info!("libqaul API start_with_config");
     // Spawn new thread
     thread::spawn(move || {
+        log::info!("libqaul API start_with_config thread spawned");
         block_on(async move {
+            log::info!("libqaul API start_with_config async started");
             // start libqaul
             crate::start(storage_path, config).await;
+            log::info!("libqaul API start_with_config start called");
         })
     });
+    log::info!("libqaul API start_with_config done");
 }
 
 /// start libqaul on a desktop platform (Linux, Mac, Windows)

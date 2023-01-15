@@ -89,12 +89,16 @@ enum EventType {
 /// * Optionally you can provide the following configuration values:
 ///   * listening port of the Internet connection module (default = randomly assigned)
 pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, String>>) -> () {
+    println!("println start 1");
+    log::info!("start 1");
     // check if we need to upgrade our stored data
     if upgrade::Upgrade::init(storage_path.clone()) == false {
         println!("upgrade to new version failed");
         // restart node
         std::process::exit(0);
     }
+    println!("println start 2");
+    log::info!("start 2");
 
     // check configuration options
     if let Some(def_cfg) = def_config {
@@ -102,15 +106,18 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
     } else {
         DEFCONFIGS.set(BTreeMap::new());
     }
+    log::info!("start 3");
 
     // initialize rpc system
     let libqaul_rpc_receive = Rpc::init();
     let libqaul_sys_receive = Sys::init();
 
+    log::info!("start 4");
     // initialize storage module.
     // This will initialize configuration & data base
     storage::Storage::init(storage_path.clone());
 
+    log::info!("start 5");
     // --- initialize logger ---
     // prepare logger path
     // the path of the log file follows the following naming convention:
@@ -121,6 +128,7 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
     // create log directory if missing
     std::fs::create_dir_all(&log_path).unwrap();
 
+    log::info!("start 6");
     // create log file name
     let log_file_name: String =
         "error_".to_string() + Timestamp::get_timestamp().to_string().as_str() + ".log";
@@ -130,6 +138,7 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
     let paths = std::fs::read_dir(log_path).unwrap();
     // --- logger init-end ---
 
+    log::info!("start 7");
     let mut logfiles: BTreeMap<i64, String> = BTreeMap::new();
     let mut logfile_times: Vec<i64> = vec![];
     for path in paths {
@@ -151,6 +160,7 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
         }
     }
 
+    log::info!("start 8");
     // logging on android with android logger
     #[cfg(target_os = "android")]
     {
@@ -182,53 +192,55 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
         multi_log::MultiLogger::init(vec![env_logger, Box::new(w_logger)], log::Level::Info)
             .unwrap();
     }
-
-    // only use the simple logger on desktop systems
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        // find rust env var
-        let mut env_log_level = String::from("error");
-        for (key, value) in std::env::vars() {
-            if key == "RUST_LOG" {
-                env_log_level = value;
-                break;
+    /*
+        // only use the simple logger on desktop systems
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            // find rust env var
+            let mut env_log_level = String::from("error");
+            for (key, value) in std::env::vars() {
+                if key == "RUST_LOG" {
+                    env_log_level = value;
+                    break;
+                }
             }
+
+            // define log level
+            let mut level_filter = log::LevelFilter::Error;
+            if env_log_level == "warn" {
+                level_filter = log::LevelFilter::Warn;
+            } else if env_log_level == "debug" {
+                level_filter = log::LevelFilter::Debug;
+            } else if env_log_level == "info" {
+                level_filter = log::LevelFilter::Info;
+            } else if env_log_level == "trace" {
+                level_filter = log::LevelFilter::Trace;
+            }
+
+            let env_logger = Box::new(
+                pretty_env_logger::formatted_builder()
+                    .filter(None, level_filter)
+                    .build(),
+            );
+            let w_logger = FileLogger::new(*simplelog::WriteLogger::new(
+                simplelog::LevelFilter::Error,
+                simplelog::Config::default(),
+                File::create(log_file_path).unwrap(),
+            ));
+            multi_log::MultiLogger::init(vec![env_logger, Box::new(w_logger)], log::Level::Info)
+                .unwrap();
         }
-
-        // define log level
-        let mut level_filter = log::LevelFilter::Error;
-        if env_log_level == "warn" {
-            level_filter = log::LevelFilter::Warn;
-        } else if env_log_level == "debug" {
-            level_filter = log::LevelFilter::Debug;
-        } else if env_log_level == "info" {
-            level_filter = log::LevelFilter::Info;
-        } else if env_log_level == "trace" {
-            level_filter = log::LevelFilter::Trace;
-        }
-
-        let env_logger = Box::new(
-            pretty_env_logger::formatted_builder()
-                .filter(None, level_filter)
-                .build(),
-        );
-        let w_logger = FileLogger::new(*simplelog::WriteLogger::new(
-            simplelog::LevelFilter::Error,
-            simplelog::Config::default(),
-            File::create(log_file_path).unwrap(),
-        ));
-        multi_log::MultiLogger::init(vec![env_logger, Box::new(w_logger)], log::Level::Info)
-            .unwrap();
-    }
-
-    log::trace!("test log to ensure that logging is working");
+    */
+    log::info!("test log to ensure that logging is working");
 
     // initialize node & user accounts
     Node::init();
 
+    log::info!("start Node::init()");
     // initialize router
     Router::init();
 
+    log::info!("start Router::init()");
     // initialize Connection Modules
     let conn = Connections::init().await;
     let mut internet = conn.internet.unwrap();
@@ -237,6 +249,7 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
     // initialize services
     Services::init();
 
+    log::info!("start Services::init()");
     // check RPC once every 10 milliseconds
     // TODO: interval is only in unstable. Use it once it is stable.
     //       https://docs.rs/async-std/1.5.0/async_std/stream/fn.interval.html
@@ -282,7 +295,7 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
     // set initialized flag
     INITIALIZED.set(true);
 
-    log::trace!("initializing finished, start event loop");
+    log::info!("initializing finished, start event loop");
 
     loop {
         let evt = {
