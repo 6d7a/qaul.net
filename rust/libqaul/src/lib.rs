@@ -89,7 +89,6 @@ enum EventType {
 /// * Optionally you can provide the following configuration values:
 ///   * listening port of the Internet connection module (default = randomly assigned)
 pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, String>>) -> () {
-    println!("println start 1");
     log::info!("start 1");
     // check if we need to upgrade our stored data
     if upgrade::Upgrade::init(storage_path.clone()) == false {
@@ -97,7 +96,6 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
         // restart node
         std::process::exit(0);
     }
-    println!("println start 2");
     log::info!("start 2");
 
     // check configuration options

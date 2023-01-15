@@ -34,6 +34,7 @@ pub extern "C" fn start(s: *const c_char) {
     let r_str = c_str.to_str().unwrap();
     println!("{}", r_str.to_string());
     super::start(r_str.to_string());
+    println!("start finished");
 }
 
 /// start libqaul on desktop operating systems
@@ -46,6 +47,7 @@ pub extern "C" fn start(s: *const c_char) {
 /// to be provided.
 #[no_mangle]
 pub extern "C" fn start_desktop() {
+    println!("start_desktop()");
     super::start_desktop();
 }
 
@@ -59,7 +61,9 @@ pub extern "C" fn start_desktop() {
 /// Don't send any messages to libqaul before it finished initializing.
 #[no_mangle]
 pub extern "C" fn initialized() -> i32 {
+    println!("initialized()");
     if super::initialization_finished() {
+        println!("initialization_finished");
         return 1;
     }
 
@@ -81,6 +85,7 @@ pub extern "C" fn receivequeue() -> i32 {
 /// -2 : message is too big
 #[no_mangle]
 pub extern "C" fn send_rpc_to_libqaul(message: *const u8, message_length: u32) -> i32 {
+    println!("send_rpc_to_libqaul()");
     // message-pointer sanity check
     if message.is_null() {
         log::error!("message pointer is null");
@@ -126,6 +131,8 @@ pub extern "C" fn send_rpc_to_libqaul(message: *const u8, message_length: u32) -
 /// -3 : buffer pointer is null
 #[no_mangle]
 pub extern "C" fn receive_rpc_from_libqaul(buffer: *mut libc::c_uchar, buffer_length: u32) -> i32 {
+    println!("receive_rpc_from_libqaul()");
+
     // poll rpc channel
     let received = crate::rpc::Rpc::receive_from_libqaul();
 
@@ -186,6 +193,7 @@ pub extern "C" fn receive_rpc_from_libqaul(buffer: *mut libc::c_uchar, buffer_le
 /// Get the number of messages cued for receiving
 #[no_mangle]
 pub extern "C" fn receive_rpc_from_libqaul_queued_length() -> i32 {
+    println!("receive_rpc_from_libqaul_queued_length()");
     // check rpc queue len
     crate::rpc::Rpc::receive_from_libqaul_queue_length() as i32
 }
@@ -195,6 +203,7 @@ pub extern "C" fn receive_rpc_from_libqaul_queued_length() -> i32 {
 /// This function is mainly for debugging.
 #[no_mangle]
 pub extern "C" fn send_rpc_to_libqaul_count() -> i32 {
+    println!("send_rpc_to_libqaul_count()");
     // get message count of messages sent to libqaul
     crate::rpc::Rpc::send_rpc_count()
 }
@@ -208,6 +217,8 @@ pub extern "C" fn send_rpc_to_libqaul_count() -> i32 {
 /// -2 : message is too big
 #[no_mangle]
 pub extern "C" fn send_sys_to_libqaul(message: *const u8, message_length: u32) -> i32 {
+    println!("send_sys_to_libqaul()");
+
     // message-pointer sanity check
     if message.is_null() {
         log::error!("message pointer is null");
@@ -253,6 +264,8 @@ pub extern "C" fn send_sys_to_libqaul(message: *const u8, message_length: u32) -
 /// -3 : buffer pointer is null
 #[no_mangle]
 pub extern "C" fn receive_sys_from_libqaul(buffer: *mut libc::c_uchar, buffer_length: u32) -> i32 {
+    println!("receive_sys_from_libqaul()");
+
     // poll rpc channel
     let received = crate::rpc::sys::Sys::receive_from_libqaul();
 

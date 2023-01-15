@@ -47,7 +47,6 @@ pub fn start(storage_path: String) {
 ///   the following options can be provided:
 ///   * Internet module listening port. By default this port is randomly assigned.
 pub fn start_with_config(storage_path: String, config: Option<BTreeMap<String, String>>) {
-    println!("println libqaul API start_with_config");
     log::info!("libqaul API start_with_config");
     // Spawn new thread
     thread::spawn(move || {
