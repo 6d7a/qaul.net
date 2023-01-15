@@ -63,9 +63,10 @@ pub extern "C" fn start_desktop() {
 pub extern "C" fn initialized() -> i32 {
     println!("initialized()");
     if super::initialization_finished() {
-        println!("initialization_finished");
+        println!("initialized() 1");
         return 1;
     }
+    println!("initialized() 0");
 
     0
 }
@@ -73,6 +74,7 @@ pub extern "C" fn initialized() -> i32 {
 /// Yields the total number of messages queued to be received.
 #[no_mangle]
 pub extern "C" fn receivequeue() -> i32 {
+    println!("receivequeue()");
     return super::receive_rpc_queued() as i32;
 }
 
