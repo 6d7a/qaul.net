@@ -294,8 +294,12 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
     INITIALIZED.set(true);
 
     log::info!("initializing finished, start event loop");
+    let mut loop_counter: u64 = 0;
 
     loop {
+        loop_counter = loop_counter + 1;
+        log::info!("loop start {}", loop_counter);
+
         let evt = {
             let lan_fut = lan.swarm.next().fuse();
             let internet_fut = internet.swarm.next().fuse();
@@ -330,6 +334,8 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
                 messaging_fut,
                 retransmit_fut,
             );
+
+            log::info!("loop 1");
 
             select! {
                 lan_event = lan_fut => {
@@ -426,6 +432,8 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
                 _retransmit_event = retransmit_fut => Some(EventType::Retransmit(true)),
             }
         };
+
+        log::info!("loop 2");
 
         if let Some(event) = evt {
             match event {
@@ -714,5 +722,6 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
                 }
             }
         }
+        log::info!("loop end");
     }
 }
