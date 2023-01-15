@@ -335,8 +335,6 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
                 retransmit_fut,
             );
 
-            log::info!("loop 1");
-
             select! {
                 lan_event = lan_fut => {
                     //log::trace!("Unhandled lan connection module event: {:?}", lan_event);
@@ -432,8 +430,6 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
                 _retransmit_event = retransmit_fut => Some(EventType::Retransmit(true)),
             }
         };
-
-        log::info!("loop 2");
 
         if let Some(event) = evt {
             match event {
@@ -722,6 +718,5 @@ pub async fn start(storage_path: String, def_config: Option<BTreeMap<String, Str
                 }
             }
         }
-        log::info!("loop end");
     }
 }
