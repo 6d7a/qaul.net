@@ -23,7 +23,7 @@ apps:
       - network
       - process-control
       - system-observe
-
+      - network-control
     slots:
       - dbus-qaul
 
