@@ -1,0 +1,6 @@
+[package]
+name = "ble_module"
+version = "0.1.0"
+authors = ["qaul community <contact@qaul.net>"]
+edition = "2021"
+license = "AGPL"
