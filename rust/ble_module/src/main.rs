@@ -1,19 +1,16 @@
+#[macro_use]
+extern crate log;
+extern crate simplelog;
+
+mod rpc;
+
+use filetime::FileTime;
+use simplelog::*;
 use std::{
     collections::BTreeMap,
     fs::File,
     time::{SystemTime, UNIX_EPOCH},
 };
-
-#[macro_use]
-extern crate log;
-extern crate simplelog;
-
-use filetime::FileTime;
-use simplelog::*;
-
-mod proto_sys {
-    include!("../../libqaul/src/rpc/protobuf_generated/rust/qaul.sys.ble.rs");
-}
 
 /// initialize and start the ble_module
 ///
