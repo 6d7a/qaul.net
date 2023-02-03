@@ -87,4 +87,10 @@ async fn main() {
         ),
     ])
     .unwrap();
+
+    let mut rpc_receiver = rpc::init();
+
+    while let Some(message) = rpc_receiver.recv().await {
+        println!("GOT message {:#?}", message);
+    }
 }

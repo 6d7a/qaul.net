@@ -11,23 +11,21 @@ mod proto_sys {
 
 use bytes::Bytes;
 use state::Storage;
-use tokio::sync::mpsc::{self, Receiver, Sender};
-
-use self::err::RpcError;
+use tokio::sync::mpsc;
 
 /// receiver of the mpsc channel: ui ---> ble_module
-static EXTERN_RECEIVE: Storage<Receiver<Bytes>> = Storage::new();
+static EXTERN_RECEIVE: Storage<crossbeam_channel::Receiver<Bytes>> = Storage::new();
 /// sender of the mpsc channel: ui ---> ble_module
-static EXTERN_SEND: Storage<Sender<Bytes>> = Storage::new();
+static EXTERN_SEND: Storage<tokio::sync::mpsc::Sender<Bytes>> = Storage::new();
 /// sender handle of the mpsc channel: ble_module ---> ui
-static BLE_MODULE_SEND: Storage<Sender<Bytes>> = Storage::new();
+static BLE_MODULE_SEND: Storage<crossbeam_channel::Sender<Bytes>> = Storage::new();
 
 /// Initialize RPC module
 /// Create the sending and receiving channels and persist them across threads.
 /// Return the receiver for the channel ui ---> ble_module
-fn init() -> Receiver<Bytes> {
+pub fn init() -> tokio::sync::mpsc::Receiver<Bytes> {
     // create channels
-    let (ble_send, ui_rec) = mpsc::channel::<Bytes>(32);
+    let (ble_send, ui_rec) = crossbeam_channel::bounded::<Bytes>(32);
     let (ui_send, ble_rec) = mpsc::channel::<Bytes>(32);
 
     // save to state
@@ -39,6 +37,33 @@ fn init() -> Receiver<Bytes> {
     ble_rec
 }
 
-pub fn listener() -> Result<(), RpcError> {
-    Ok(())
+/// send rpc message ui ---> ble_module
+pub fn send_to_ble_module(binary_message: Bytes) {
+    if let Err(err) = EXTERN_SEND.get().try_send(binary_message) {
+        error!("{:?}", err);
+    }
 }
+
+/// check whether there are new messages in
+/// the receiving rpc channel ble_module ---> ui
+pub fn receive_from_ble_module() -> Result<Bytes, crossbeam_channel::TryRecvError> {
+    EXTERN_RECEIVE.get().try_recv()
+}
+
+/// get the number of messages in the receiving cue
+pub fn queue_length_ble_to_ui() -> usize {
+    BLE_MODULE_SEND.get().len()
+}
+
+/// send rpc message ble_module ---> ui
+pub fn send_to_ui(binary_message: Bytes) {
+    if let Err(err) = BLE_MODULE_SEND.get().try_send(binary_message) {
+        error!("{:?}", err);
+    }
+}
+
+/// Process received binary protobuf encoded RPC message
+///
+/// This function will decode the message from the binary
+/// protobuf format to a rust struct and return it
+pub async fn process_received_message(data: Bytes) {}
