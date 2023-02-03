@@ -4,7 +4,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+#[macro_use]
+extern crate log;
+extern crate simplelog;
+
 use filetime::FileTime;
+use simplelog::*;
 
 mod proto_sys {
     include!("../../libqaul/src/rpc/protobuf_generated/rust/qaul.sys.ble.rs");
@@ -22,9 +27,36 @@ async fn main() {
     // create log directory if missing
     std::fs::create_dir_all(&log_path).unwrap();
 
+    // find rust env var
+    let mut env_log_level = String::from("error");
+    for (key, value) in std::env::vars() {
+        if key == "RUST_LOG" {
+            env_log_level = value;
+            break;
+        }
+    }
+
+    // define log level
+    let mut level_filter = log::LevelFilter::Error;
+    if env_log_level == "warn" {
+        level_filter = log::LevelFilter::Warn;
+    } else if env_log_level == "debug" {
+        level_filter = log::LevelFilter::Debug;
+    } else if env_log_level == "info" {
+        level_filter = log::LevelFilter::Info;
+    } else if env_log_level == "trace" {
+        level_filter = log::LevelFilter::Trace;
+    }
+
     // create log file name
-    let log_file_name: String =
-        "error_".to_string() + SystemTime::duration_since(UNIX_EPOCH).unwrap() + ".log";
+    let log_file_name: String = format!(
+        "{}_{}.log",
+        env_log_level,
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
     let log_file_path = log_path.join(log_file_name);
 
     // maintain log files
@@ -49,38 +81,13 @@ async fn main() {
         }
     }
 
-    // find rust env var
-    let mut env_log_level = String::from("error");
-    for (key, value) in std::env::vars() {
-        if key == "RUST_LOG" {
-            env_log_level = value;
-            break;
-        }
-    }
-
-    // define log level
-    let mut level_filter = log::LevelFilter::Error;
-    if env_log_level == "warn" {
-        level_filter = log::LevelFilter::Warn;
-    } else if env_log_level == "debug" {
-        level_filter = log::LevelFilter::Debug;
-    } else if env_log_level == "info" {
-        level_filter = log::LevelFilter::Info;
-    } else if env_log_level == "trace" {
-        level_filter = log::LevelFilter::Trace;
-    }
-
-    let env_logger = Box::new(
-        pretty_env_logger::formatted_builder()
-            .filter(None, level_filter)
-            .build(),
-    );
-    let w_logger = FileLogger::new(*simplelog::WriteLogger::new(
-        simplelog::LevelFilter::Error,
-        simplelog::Config::default(),
-        File::create(log_file_path).unwrap(),
-    ));
-    multi_log::MultiLogger::init(vec![env_logger, Box::new(w_logger)], log::Level::Info).unwrap();
-
-    //log::trace!("test log to ensure that logging is working");
+    CombinedLogger::init(vec![
+        SimpleLogger::new(level_filter, Config::default()),
+        WriteLogger::new(
+            level_filter,
+            Config::default(),
+            File::create(log_file_path).unwrap(),
+        ),
+    ])
+    .unwrap();
 }
