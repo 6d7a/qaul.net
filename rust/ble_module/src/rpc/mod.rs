@@ -11,7 +11,9 @@ mod proto_sys {
     include!("./qaul.sys.ble.rs");
 }
 
+use async_trait::async_trait;
 use bytes::Bytes;
+use crossbeam_channel::Receiver;
 use prost::Message;
 use state::Storage;
 use tokio::sync::mpsc;
@@ -25,10 +27,30 @@ static EXTERN_SEND: Storage<tokio::sync::mpsc::Sender<Bytes>> = Storage::new();
 /// sender handle of the mpsc channel: ble_module ---> ui
 static BLE_MODULE_SEND: Storage<crossbeam_channel::Sender<Bytes>> = Storage::new();
 
+#[async_trait]
+pub trait SysRpcReceiver {
+    async fn recv(&mut self) -> Option<Ble>;
+}
+
+pub struct BleRpc {
+    receiver: tokio::sync::mpsc::Receiver<Bytes>,
+}
+
+#[async_trait]
+impl SysRpcReceiver for BleRpc {
+    async fn recv(&mut self) -> Option<Ble> {
+        self.receiver
+            .recv()
+            .await
+            .map(&process_received_message)
+            .flatten()
+    }
+}
+
 /// Initialize RPC module
 /// Create the sending and receiving channels and persist them across threads.
 /// Return the receiver for the channel ui ---> ble_module
-pub fn init() -> tokio::sync::mpsc::Receiver<Bytes> {
+pub fn init() -> BleRpc {
     // create channels
     let (ble_send, ui_rec) = crossbeam_channel::bounded::<Bytes>(32);
     let (ui_send, ble_rec) = mpsc::channel::<Bytes>(32);
@@ -39,7 +61,7 @@ pub fn init() -> tokio::sync::mpsc::Receiver<Bytes> {
     BLE_MODULE_SEND.set(ble_send);
 
     // return ble receiver
-    ble_rec
+    BleRpc { receiver: ble_rec }
 }
 
 /// send rpc message ui ---> ble_module

@@ -2,6 +2,7 @@
 extern crate log;
 extern crate simplelog;
 
+mod ble;
 mod rpc;
 
 use filetime::FileTime;
@@ -9,9 +10,10 @@ use simplelog::*;
 use std::{
     collections::BTreeMap,
     fs::File,
-    future,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+use crate::rpc::SysRpcReceiver;
 
 /// initialize and start the ble_module
 ///
@@ -93,9 +95,10 @@ async fn main() {
 
     tokio::select! {
         sys_ble_msg = async {
-            rpc_receiver.recv().await.map(&rpc::process_received_message).flatten()
+            rpc_receiver.recv().await
         } => {
             if sys_ble_msg.is_none() { return }
+
         }
     }
 }
