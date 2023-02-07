@@ -5,13 +5,18 @@
 //!
 //! Listens to incoming RPC messages on the `qaul.sys.ble` channel.
 pub mod err;
+
+// TODO: remove local import, import instead from libqaul
 mod proto_sys {
-    include!("../../../libqaul/src/rpc/protobuf_generated/rust/qaul.sys.ble.rs");
+    include!("./qaul.sys.ble.rs");
 }
 
 use bytes::Bytes;
+use prost::Message;
 use state::Storage;
 use tokio::sync::mpsc;
+
+use proto_sys::Ble;
 
 /// receiver of the mpsc channel: ui ---> ble_module
 static EXTERN_RECEIVE: Storage<crossbeam_channel::Receiver<Bytes>> = Storage::new();
@@ -66,4 +71,12 @@ pub fn send_to_ui(binary_message: Bytes) {
 ///
 /// This function will decode the message from the binary
 /// protobuf format to a rust struct and return it
-pub async fn process_received_message(data: Bytes) {}
+pub fn process_received_message(data: Bytes) -> Option<Ble> {
+    match Ble::decode(data.clone()) {
+        Ok(ble) => Some(ble),
+        Err(err) => {
+            error!("{:#?}", err);
+            None
+        }
+    }
+}

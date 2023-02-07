@@ -9,6 +9,7 @@ use simplelog::*;
 use std::{
     collections::BTreeMap,
     fs::File,
+    future,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -90,7 +91,11 @@ async fn main() {
 
     let mut rpc_receiver = rpc::init();
 
-    while let Some(message) = rpc_receiver.recv().await {
-        println!("GOT message {:#?}", message);
+    tokio::select! {
+        sys_ble_msg = async {
+            rpc_receiver.recv().await.map(&rpc::process_received_message).flatten()
+        } => {
+            if sys_ble_msg.is_none() { return }
+        }
     }
 }
