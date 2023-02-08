@@ -4,7 +4,6 @@
 //! # RPC Module
 //!
 //! Listens to incoming RPC messages on the `qaul.sys.ble` channel.
-pub mod err;
 
 // TODO: remove local import, import instead from libqaul
 mod proto_sys {
@@ -13,7 +12,6 @@ mod proto_sys {
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use crossbeam_channel::Receiver;
 use prost::Message;
 use state::Storage;
 use tokio::sync::mpsc;
