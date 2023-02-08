@@ -7,7 +7,7 @@ license = "AGPL"
 
 [dependencies]
 async-trait = "0.1.64"
-bluer = "0.15.7"
+bluer = { version = "0.15.7", features = ["full"] }
 bytes = "1.4.0"
 crossbeam-channel = "0.5.6"
 filetime = "0.2.19"
