@@ -3,8 +3,10 @@ extern crate log;
 extern crate simplelog;
 
 mod ble;
+mod ble_connector;
 mod rpc;
 
+use ble_connector::run_ble_connector_loop;
 use filetime::FileTime;
 use simplelog::*;
 use std::{
@@ -91,14 +93,7 @@ async fn main() {
     ])
     .unwrap();
 
-    let mut rpc_receiver = rpc::init();
+    let rpc_receiver = rpc::init();
 
-    tokio::select! {
-        sys_ble_msg = async {
-            rpc_receiver.recv().await
-        } => {
-            if sys_ble_msg.is_none() { return }
-
-        }
-    }
+    run_ble_connector_loop(Box::new(rpc_receiver)).await;
 }
