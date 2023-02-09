@@ -15,8 +15,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::rpc::SysRpcReceiver;
-
 /// initialize and start the ble_module
 ///
 #[tokio::main]
