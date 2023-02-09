@@ -3,7 +3,7 @@ use std::{error::Error, vec};
 use bytes::Bytes;
 
 use crate::{
-    ble::{ble_manager::BleManager, ble_service::QaulBleService},
+    ble::{ble_manager::QaulBleManager, ble_service::QaulBleService},
     rpc::SysRpcReceiver,
 };
 

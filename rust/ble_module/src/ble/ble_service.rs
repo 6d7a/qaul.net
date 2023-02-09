@@ -8,7 +8,7 @@ use bluer::{
 use bytes::Bytes;
 
 use super::{
-    ble_manager::BleManager,
+    ble_manager::QaulBleManager,
     ble_uuids::{MSG_SERVICE_UUID, SERVICE_UUID},
 };
 
@@ -38,7 +38,7 @@ impl QaulBleService {
 }
 
 #[async_trait]
-impl BleManager for QaulBleService {
+impl QaulBleManager for QaulBleService {
     /// Starts the advertisement for the qaul Bluetooth service
     async fn advertise(&mut self, advert_mode: Option<i16>) -> Result<(), Box<dyn Error>> {
         let main_adv = Advertisement {

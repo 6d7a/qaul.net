@@ -4,6 +4,6 @@ use async_trait::async_trait;
 use bytes::Bytes;
 
 #[async_trait]
-pub trait BleManager {
-    async fn advertise(&mut self, advertMode: Option<i16>) -> Result<(), Box<dyn Error>>;
+pub trait QaulBleManager {
+    async fn advertise(&mut self, advert_mode: Option<i16>) -> Result<(), Box<dyn Error>>;
 }
