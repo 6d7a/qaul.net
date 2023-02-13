@@ -1,17 +1,17 @@
-use std::error::Error;
+use std::{error::Error, pin::Pin};
 
 use async_trait::async_trait;
 use bluer::{
-    adv::Advertisement,
-    adv::AdvertisementHandle,
+    adv::{Advertisement, AdvertisementHandle},
     gatt::local::{
         characteristic_control, service_control, Application, ApplicationHandle, Characteristic,
         CharacteristicControlHandle, CharacteristicRead, CharacteristicWrite,
         CharacteristicWriteMethod, Service, ServiceControlHandle,
     },
-    Adapter, Session, Uuid,
+    Adapter, AdapterEvent, Address, Session, Uuid,
 };
 use bytes::Bytes;
+use futures::StreamExt;
 
 use super::{
     ble_manager::{QaulBleAppEventRx, QaulBleManager},
@@ -29,6 +29,7 @@ pub struct QaulBleService {
     pub ble_handles: Vec<QaulBleHandle>,
     pub adapter: Adapter,
     pub session: Session,
+    pub device_block_list: Vec<Address>,
 }
 
 impl QaulBleService {
@@ -42,6 +43,7 @@ impl QaulBleService {
             ble_handles: vec![],
             adapter,
             session,
+            device_block_list: vec![],
         })
     }
 }
@@ -133,5 +135,12 @@ impl QaulBleManager for QaulBleService {
             msg_chara_events: msg_chara_ctrl,
             main_chara_events: main_chara_ctrl,
         })
+    }
+
+    async fn scan(
+        &mut self,
+    ) -> Result<Pin<Box<dyn futures::Stream<Item = AdapterEvent>>>, Box<dyn Error>> {
+        let adapter_events = self.adapter.discover_devices_with_changes().await?;
+        Ok(Box::pin(adapter_events))
     }
 }
