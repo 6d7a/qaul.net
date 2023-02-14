@@ -1,7 +1,7 @@
 use std::{error::Error, pin::Pin};
 
 use async_trait::async_trait;
-use bluer::{gatt::local::CharacteristicControl, AdapterEvent};
+use bluer::{gatt::local::CharacteristicControl, AdapterEvent, Address};
 use bytes::Bytes;
 use futures::Stream;
 
@@ -17,5 +17,5 @@ pub trait QaulBleManager {
         -> Result<QaulBleAppEventRx, Box<dyn Error>>;
     async fn scan(
         &mut self,
-    ) -> Result<Pin<Box<dyn futures::Stream<Item = AdapterEvent>>>, Box<dyn Error>>;
+    ) -> Result<Pin<Box<dyn futures::Stream<Item = Address>>>, Box<dyn Error>>;
 }

@@ -11,7 +11,7 @@ use bluer::{
     Adapter, AdapterEvent, Address, Session, Uuid,
 };
 use bytes::Bytes;
-use futures::StreamExt;
+use futures::{executor::block_on, StreamExt};
 
 use super::{
     ble_manager::{QaulBleAppEventRx, QaulBleManager},
@@ -139,8 +139,22 @@ impl QaulBleManager for QaulBleService {
 
     async fn scan(
         &mut self,
-    ) -> Result<Pin<Box<dyn futures::Stream<Item = AdapterEvent>>>, Box<dyn Error>> {
-        let adapter_events = self.adapter.discover_devices_with_changes().await?;
-        Ok(Box::pin(adapter_events))
+    ) -> Result<Pin<Box<dyn futures::Stream<Item = Address>>>, Box<dyn Error>> {
+        let block_list = self.device_block_list.clone();
+        Ok(self
+            .adapter
+            .discover_devices_with_changes()
+            .await?
+            .filter_map(move |evt| match evt {
+                AdapterEvent::DeviceAdded(device) => {
+                    if block_list.contains(&device) {
+                        std::future::ready(None)
+                    } else {
+                        std::future::ready(Some(device))
+                    }
+                }
+                _ => std::future::ready(None),
+            })
+            .boxed())
     }
 }

@@ -37,13 +37,8 @@ pub async fn run_ble_connector_loop(mut rpc_receiver: Box<dyn SysRpcReceiver>) {
                     }
                 }
             }
-            Some(scan_event) = adapter_events.next() => {
-                match scan_event {
-                    AdapterEvent::DeviceAdded(addr) => {
-                            println!("Device added: {addr}");
-                    },
-                    _ => {}
-                }
+            Some(address) = adapter_events.next() => {
+                    println!("Device added: {:?}", address);
             }
         }
     }
