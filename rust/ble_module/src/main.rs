@@ -3,13 +3,11 @@ extern crate log;
 extern crate simplelog;
 
 mod ble;
-mod ble_connector;
 mod rpc;
 
 use ble::ble_service::QaulBleService;
-use ble_connector::run_ble_connector_loop;
 use filetime::FileTime;
-use futures::TryFutureExt;
+use rpc::msg_loop::listen_for_sys_msgs;
 use simplelog::*;
 use std::{
     collections::BTreeMap,
@@ -99,5 +97,5 @@ async fn main() {
         std::process::exit(1);
     });
 
-    run_ble_connector_loop(Box::new(rpc_receiver), Box::new(ble_service)).await;
+    listen_for_sys_msgs(Box::new(rpc_receiver), Box::new(ble_service)).await;
 }

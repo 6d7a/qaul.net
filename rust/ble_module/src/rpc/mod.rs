@@ -9,6 +9,7 @@
 pub mod proto_sys {
     include!("./qaul.sys.ble.rs");
 }
+pub mod msg_loop;
 
 use async_trait::async_trait;
 use bytes::Bytes;

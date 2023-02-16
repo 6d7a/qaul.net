@@ -1,14 +1,14 @@
 use std::error::Error;
 
 use crate::{
-    ble::{self, ble_manager::QaulBleConnect},
+    ble::ble_connect::QaulBleConnect,
     rpc::{proto_sys::ble::Message::*, SysRpcReceiver},
 };
 
-pub async fn run_ble_connector_loop(
+pub async fn listen_for_sys_msgs(
     mut rpc_receiver: Box<dyn SysRpcReceiver>,
     mut ble_service: Box<dyn QaulBleConnect>,
-) -> Result<(), Box<dyn Error> {
+) -> Result<(), Box<dyn Error>> {
     loop {
         let evt = rpc_receiver.recv().await;
         match evt {

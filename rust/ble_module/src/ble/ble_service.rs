@@ -14,7 +14,7 @@ use bytes::Bytes;
 use futures::{executor::block_on, StreamExt};
 
 use super::{
-    ble_manager::{QaulBleAppEventRx, QaulBleManager},
+    ble_connect::{QaulBleAppEventRx, QaulBleConnect},
     ble_uuids::{MAIN_SERVICE_UUID, MSG_CHAR, MSG_SERVICE_UUID, READ_CHAR},
 };
 
@@ -49,7 +49,7 @@ impl QaulBleService {
 }
 
 #[async_trait]
-impl QaulBleManager for QaulBleService {
+impl QaulBleConnect for QaulBleService {
     /// Starts the advertisement for the qaul Bluetooth service
     async fn advertise(&mut self, advert_mode: Option<i16>) -> Result<(), Box<dyn Error>> {
         let main_adv = Advertisement {
