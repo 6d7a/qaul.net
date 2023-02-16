@@ -6,7 +6,7 @@
 //! Listens to incoming RPC messages on the `qaul.sys.ble` channel.
 
 // TODO: remove local import, import instead from libqaul
-mod proto_sys {
+pub mod proto_sys {
     include!("./qaul.sys.ble.rs");
 }
 
