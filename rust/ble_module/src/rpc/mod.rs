@@ -10,6 +10,7 @@ pub mod proto_sys {
     include!("./qaul.sys.ble.rs");
 }
 pub mod msg_loop;
+pub mod utils;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -20,11 +21,11 @@ use tokio::sync::mpsc;
 use proto_sys::Ble;
 
 /// receiver of the mpsc channel: ui ---> ble_module
-static EXTERN_RECEIVE: Storage<crossbeam_channel::Receiver<Bytes>> = Storage::new();
+static EXTERN_RECEIVE: Storage<crossbeam_channel::Receiver<Vec<u8>>> = Storage::new();
 /// sender of the mpsc channel: ui ---> ble_module
 static EXTERN_SEND: Storage<tokio::sync::mpsc::Sender<Bytes>> = Storage::new();
 /// sender handle of the mpsc channel: ble_module ---> ui
-static BLE_MODULE_SEND: Storage<crossbeam_channel::Sender<Bytes>> = Storage::new();
+static BLE_MODULE_SEND: Storage<crossbeam_channel::Sender<Vec<u8>>> = Storage::new();
 
 #[async_trait]
 pub trait SysRpcReceiver {
@@ -51,7 +52,7 @@ impl SysRpcReceiver for BleRpc {
 /// Return the receiver for the channel ui ---> ble_module
 pub fn init() -> BleRpc {
     // create channels
-    let (ble_send, ui_rec) = crossbeam_channel::bounded::<Bytes>(32);
+    let (ble_send, ui_rec) = crossbeam_channel::bounded::<Vec<u8>>(32);
     let (ui_send, ble_rec) = mpsc::channel::<Bytes>(32);
 
     // save to state
@@ -72,7 +73,7 @@ pub fn send_to_ble_module(binary_message: Bytes) {
 
 /// check whether there are new messages in
 /// the receiving rpc channel ble_module ---> ui
-pub fn receive_from_ble_module() -> Result<Bytes, crossbeam_channel::TryRecvError> {
+pub fn receive_from_ble_module() -> Result<Vec<u8>, crossbeam_channel::TryRecvError> {
     EXTERN_RECEIVE.get().try_recv()
 }
 
@@ -82,7 +83,7 @@ pub fn queue_length_ble_to_ui() -> usize {
 }
 
 /// send rpc message ble_module ---> ui
-pub fn send_to_ui(binary_message: Bytes) {
+pub fn send_to_ui(binary_message: Vec<u8>) {
     if let Err(err) = BLE_MODULE_SEND.get().try_send(binary_message) {
         error!("{:?}", err);
     }
