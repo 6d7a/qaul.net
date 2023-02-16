@@ -6,8 +6,10 @@ mod ble;
 mod ble_connector;
 mod rpc;
 
+use ble::ble_service::QaulBleService;
 use ble_connector::run_ble_connector_loop;
 use filetime::FileTime;
+use futures::TryFutureExt;
 use simplelog::*;
 use std::{
     collections::BTreeMap,
@@ -92,6 +94,10 @@ async fn main() {
     .unwrap();
 
     let rpc_receiver = rpc::init();
+    let ble_service = QaulBleService::new().await.unwrap_or_else(|err| {
+        error!("{:#?}", err);
+        std::process::exit(1);
+    });
 
-    run_ble_connector_loop(Box::new(rpc_receiver)).await;
+    run_ble_connector_loop(Box::new(rpc_receiver), Box::new(ble_service)).await;
 }

@@ -18,4 +18,5 @@ pub trait QaulBleManager {
     async fn scan(
         &mut self,
     ) -> Result<Pin<Box<dyn futures::Stream<Item = Address>>>, Box<dyn Error>>;
+    fn close(&self);
 }

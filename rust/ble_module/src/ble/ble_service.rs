@@ -157,4 +157,8 @@ impl QaulBleManager for QaulBleService {
             })
             .boxed())
     }
+
+    fn close(&self) {
+        self.ble_handles = vec![]
+    }
 }
