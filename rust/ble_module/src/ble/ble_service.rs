@@ -16,7 +16,7 @@ use futures::StreamExt;
 use crate::rpc::{
     self,
     proto_sys::{self, ble::Message, BleDeviceInfo, BleInfoResponse},
-    utils::send_ble_sys_msg,
+    utils::{send_ble_sys_msg, send_result_already_running},
 };
 
 use super::{
@@ -96,6 +96,18 @@ impl QaulBleConnect for QaulBleService {
             device: Some(this_device),
         };
         send_ble_sys_msg(Message::InfoResponse(response));
+        Ok(())
+    }
+
+    async fn advertise_scan_listen(
+        &mut self,
+        qaul_id: Bytes,
+        advert_mode: Option<i16>,
+    ) -> Result<(), Box<dyn Error>> {
+        if self.state == QaulBleState::Running {
+            debug!("Received start request, but BLE service is already running!");
+            send_result_already_running();
+        }
         Ok(())
     }
 }
