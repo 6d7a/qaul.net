@@ -1,5 +1,8 @@
 use std::error::Error;
 
+use bytes::Bytes;
+use prost::Message;
+
 use crate::{
     ble::ble_connect::QaulBleConnect,
     rpc::{proto_sys::ble::Message::*, SysRpcReceiver},
@@ -23,7 +26,10 @@ pub async fn listen_for_sys_msgs(
                 }
                 match msg.message.unwrap() {
                     InfoRequest(req) => ble_service.get_device_info().await?,
-                    StartRequest(req) => ble_service.advertise_scan_listen(None).await?,
+                    StartRequest(req) => {
+                        let qaul_id = Bytes::from(req.qaul_id);
+                        ble_service.advertise_scan_listen(qaul_id, None).await?
+                    }
                     StopRequest(req) => ble_service.close(),
                     DirectSend(req) => ble_service.send_directly().await?,
                     _ => (),

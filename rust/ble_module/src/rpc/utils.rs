@@ -10,9 +10,9 @@ pub fn send_ble_sys_msg(msg: proto_sys::ble::Message) {
 }
 
 pub fn send_result_already_running() {
-    send_ble_sys_msg(BleStartResult {
+    send_ble_sys_msg(proto_sys::ble::Message::StartResult(BleStartResult {
         success: true,
-        error_reason: BleError::UnknownError,
-        error_message: "Advertisement already Started".into(),
-    });
+        error_reason: BleError::UnknownError.into(),
+        error_message: "Received start request, but BLE service is already running!".into(),
+    }));
 }

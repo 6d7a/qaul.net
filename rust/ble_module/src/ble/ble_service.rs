@@ -11,7 +11,7 @@ use bluer::{
     Adapter, AdapterEvent, Address, Session, Uuid,
 };
 use bytes::Bytes;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 
 use crate::rpc::{
     self,
@@ -24,6 +24,7 @@ use super::{
     ble_uuids::{MAIN_SERVICE_UUID, MSG_CHAR, MSG_SERVICE_UUID, READ_CHAR},
 };
 
+#[derive(PartialEq)]
 enum QaulBleState {
     Running,
     Idle,
@@ -107,7 +108,91 @@ impl QaulBleConnect for QaulBleService {
         if self.state == QaulBleState::Running {
             debug!("Received start request, but BLE service is already running!");
             send_result_already_running();
+            return Ok(());
         }
+
+        /// ==================================================================================
+        /// ------------------------- SET UP ADVERTISEMENT -----------------------------------
+        /// ==================================================================================
+        let advertisement = Advertisement {
+            service_uuids: vec![Uuid::parse_str(MAIN_SERVICE_UUID)?]
+                .into_iter()
+                .collect(),
+            tx_power: advert_mode,
+            discoverable: Some(true),
+            local_name: Some("qaul.net".to_string()),
+            ..Default::default()
+        };
+
+        self.ble_handles.push(QaulBleHandle::AdvertisementHandle(
+            self.adapter.advertise(advertisement).await?,
+        ));
+
+        debug!(
+            "Advertising qaul main BLE service at UUID {}",
+            MAIN_SERVICE_UUID
+        );
+
+        /// ==================================================================================
+        /// ------------------------- SET UP APPLICATION -----------------------------------
+        /// ==================================================================================
+        let (_, main_service_handle) = service_control();
+        let (main_chara_ctrl, main_chara_handle) = characteristic_control();
+
+        let main_service = Service {
+            uuid: Uuid::parse_str(MAIN_SERVICE_UUID)?,
+            primary: true,
+            characteristics: vec![Characteristic {
+                uuid: Uuid::parse_str(READ_CHAR)?,
+                read: Some(CharacteristicRead {
+                    read: true,
+                    fun: Box::new(move |req| {
+                        let value = qaul_id.clone();
+                        async move {
+                            debug!("Read request {:?} with value {:x?}", &req, &value);
+                            Ok(value.to_vec())
+                        }
+                        .boxed()
+                    }),
+                    ..Default::default()
+                }),
+                control_handle: main_chara_handle,
+                ..Default::default()
+            }],
+            control_handle: main_service_handle,
+            ..Default::default()
+        };
+
+        let (_, msg_service_handle) = service_control();
+        let (msg_chara_ctrl, msg_chara_handle) = characteristic_control();
+
+        let msg_service = Service {
+            uuid: Uuid::parse_str(MSG_SERVICE_UUID)?,
+            primary: true,
+            characteristics: vec![Characteristic {
+                uuid: Uuid::parse_str(MSG_CHAR)?,
+                write: Some(CharacteristicWrite {
+                    write: true,
+                    write_without_response: true,
+                    method: CharacteristicWriteMethod::Io,
+                    ..Default::default()
+                }),
+                control_handle: msg_chara_handle,
+                ..Default::default()
+            }],
+            control_handle: msg_service_handle,
+            ..Default::default()
+        };
+
+        let app = Application {
+            services: vec![main_service, msg_service],
+            ..Default::default()
+        };
+
+        self.ble_handles.push(QaulBleHandle::AppHandle(
+            self.adapter.serve_gatt_application(app).await?,
+        ));
+
         Ok(())
     }
 }
