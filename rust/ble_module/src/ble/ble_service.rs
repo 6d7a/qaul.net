@@ -12,6 +12,7 @@ use bluer::{
 };
 use bytes::Bytes;
 use futures::{FutureExt, StreamExt};
+use tokio::sync::mpsc::Receiver;
 
 use crate::rpc::{
     self,
@@ -25,7 +26,7 @@ use super::{
 };
 
 #[derive(PartialEq)]
-enum QaulBleState {
+pub enum QaulBleState {
     Running,
     Idle,
     Error,
@@ -102,6 +103,7 @@ impl QaulBleConnect for QaulBleService {
 
     async fn advertise_scan_listen(
         &mut self,
+        mut terminator: Receiver<bool>,
         qaul_id: Bytes,
         advert_mode: Option<i16>,
     ) -> Result<(), Box<dyn Error>> {
@@ -111,9 +113,10 @@ impl QaulBleConnect for QaulBleService {
             return Ok(());
         }
 
-        /// ==================================================================================
-        /// ------------------------- SET UP ADVERTISEMENT -----------------------------------
-        /// ==================================================================================
+        // ==================================================================================
+        // ------------------------- SET UP ADVERTISEMENT -----------------------------------
+        // ==================================================================================
+
         let advertisement = Advertisement {
             service_uuids: vec![Uuid::parse_str(MAIN_SERVICE_UUID)?]
                 .into_iter()
@@ -133,11 +136,12 @@ impl QaulBleConnect for QaulBleService {
             MAIN_SERVICE_UUID
         );
 
-        /// ==================================================================================
-        /// ------------------------- SET UP APPLICATION -----------------------------------
-        /// ==================================================================================
+        // ==================================================================================
+        // ------------------------- SET UP APPLICATION -------------------------------------
+        // ==================================================================================
+
         let (_, main_service_handle) = service_control();
-        let (main_chara_ctrl, main_chara_handle) = characteristic_control();
+        let (mut main_chara_ctrl, main_chara_handle) = characteristic_control();
 
         let main_service = Service {
             uuid: Uuid::parse_str(MAIN_SERVICE_UUID)?,
@@ -164,7 +168,7 @@ impl QaulBleConnect for QaulBleService {
         };
 
         let (_, msg_service_handle) = service_control();
-        let (msg_chara_ctrl, msg_chara_handle) = characteristic_control();
+        let (mut msg_chara_ctrl, msg_chara_handle) = characteristic_control();
 
         let msg_service = Service {
             uuid: Uuid::parse_str(MSG_SERVICE_UUID)?,
@@ -193,120 +197,51 @@ impl QaulBleConnect for QaulBleService {
             self.adapter.serve_gatt_application(app).await?,
         ));
 
+        // ==================================================================================
+        // --------------------------------- SCAN -------------------------------------------
+        // ==================================================================================
+
+        let mut device_stream = self
+            .adapter
+            .discover_devices()
+            .await?
+            .filter_map(move |evt| match evt {
+                AdapterEvent::DeviceAdded(device) => {
+                    if self.device_block_list.contains(&device) {
+                        std::future::ready(None)
+                    } else {
+                        std::future::ready(Some(device))
+                    }
+                }
+                _ => std::future::ready(None),
+            });
+
+        // ==================================================================================
+        // --------------------------------- MAIN BLE LOOP ----------------------------------
+        // ==================================================================================
+
+        loop {
+            tokio::select! {
+                _ = terminator.recv() => {
+                    // Stop advertising, scanning, and listening and return
+                    break;
+                },
+                Some(main_event) = main_chara_ctrl.next() => {
+
+                },
+                Some(msg_event) = msg_chara_ctrl.next() => {
+
+                },
+                Some(device) = device_stream.next() => {
+                    debug!("Found device {}", device)
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn send_directly(&mut self) -> Result<(), Box<dyn Error>> {
         Ok(())
     }
 }
-
-// impl QaulBleConnect for QaulBleService {
-//     /// Starts the advertisement for the qaul Bluetooth service
-//     async fn advertise(&mut self, advert_mode: Option<i16>) -> Result<(), Box<dyn Error>> {
-//         let main_adv = Advertisement {
-//             service_uuids: vec![Uuid::parse_str(MAIN_SERVICE_UUID)?]
-//                 .into_iter()
-//                 .collect(),
-//             tx_power: advert_mode,
-//             discoverable: Some(true),
-//             local_name: Some("qaul.net".to_string()),
-//             ..Default::default()
-//         };
-
-//         self.ble_handles.push(QaulBleHandle::AdvertisementHandle(
-//             self.adapter.advertise(main_adv).await?,
-//         ));
-
-//         debug!(
-//             "Advertising qaul main BLE service at UUID {}",
-//             MAIN_SERVICE_UUID
-//         );
-
-//         Ok(())
-//     }
-
-//     /// Sets up qaul's two BLE characteristics "main" and "message"
-//     /// and returns their combined event streams
-//     async fn start_ble_app(
-//         &mut self,
-//         qaul_id: &Bytes,
-//     ) -> Result<QaulBleAppEventRx, Box<dyn Error>> {
-//         let (_, main_service_handle) = service_control();
-//         let (main_chara_ctrl, main_chara_handle) = characteristic_control();
-
-//         let main_service = Service {
-//             uuid: Uuid::parse_str(MAIN_SERVICE_UUID)?,
-//             primary: true,
-//             characteristics: vec![Characteristic {
-//                 uuid: Uuid::parse_str(READ_CHAR)?,
-//                 read: Some(CharacteristicRead {
-//                     read: true,
-//                     ..Default::default()
-//                 }),
-//                 control_handle: main_chara_handle,
-//                 ..Default::default()
-//             }],
-//             control_handle: main_service_handle,
-//             ..Default::default()
-//         };
-
-//         // TODO: set Qaul id
-
-//         let (_, msg_service_handle) = service_control();
-//         let (msg_chara_ctrl, msg_chara_handle) = characteristic_control();
-
-//         let msg_service = Service {
-//             uuid: Uuid::parse_str(MSG_SERVICE_UUID)?,
-//             primary: true,
-//             characteristics: vec![Characteristic {
-//                 uuid: Uuid::parse_str(MSG_CHAR)?,
-//                 write: Some(CharacteristicWrite {
-//                     write: true,
-//                     write_without_response: true,
-//                     method: CharacteristicWriteMethod::Io,
-//                     ..Default::default()
-//                 }),
-//                 control_handle: msg_chara_handle,
-//                 ..Default::default()
-//             }],
-//             control_handle: msg_service_handle,
-//             ..Default::default()
-//         };
-
-//         let app = Application {
-//             services: vec![main_service, msg_service],
-//             ..Default::default()
-//         };
-
-//         self.ble_handles.push(QaulBleHandle::AppHandle(
-//             self.adapter.serve_gatt_application(app).await?,
-//         ));
-
-//         Ok(QaulBleAppEventRx {
-//             msg_chara_events: msg_chara_ctrl,
-//             main_chara_events: main_chara_ctrl,
-//         })
-//     }
-
-//     async fn scan(
-//         &mut self,
-//     ) -> Result<Pin<Box<dyn futures::Stream<Item = Address>>>, Box<dyn Error>> {
-//         let block_list = self.device_block_list.clone();
-//         Ok(self
-//             .adapter
-//             .discover_devices_with_changes()
-//             .await?
-//             .filter_map(move |evt| match evt {
-//                 AdapterEvent::DeviceAdded(device) => {
-//                     if block_list.contains(&device) {
-//                         std::future::ready(None)
-//                     } else {
-//                         std::future::ready(Some(device))
-//                     }
-//                 }
-//                 _ => std::future::ready(None),
-//             })
-//             .boxed())
-//     }
-
-//     fn close(&self) {
-//         self.ble_handles = vec![]
-//     }
-// }
