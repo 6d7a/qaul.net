@@ -18,5 +18,4 @@ pub trait QaulBleConnect {
         advert_mode: Option<i16>,
     ) -> Result<(), Box<dyn Error>>;
     async fn send_directly(&mut self) -> Result<(), Box<dyn Error>>;
-    fn close(&self);
 }
