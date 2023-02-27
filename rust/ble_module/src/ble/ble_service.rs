@@ -14,14 +14,16 @@ use bytes::Bytes;
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc::Receiver;
 
-use crate::rpc::{
-    self,
-    proto_sys::{self, ble::Message, BleDeviceInfo, BleInfoResponse},
-    utils::{send_ble_sys_msg, send_result_already_running},
+use crate::{
+    ble::utils::mac_to_string,
+    rpc::{
+        proto_sys::{ble::Message, BleDeviceInfo, BleInfoResponse},
+        utils::{send_ble_sys_msg, send_result_already_running},
+    },
 };
 
 use super::{
-    ble_connect::{QaulBleAppEventRx, QaulBleConnect},
+    ble_connect::QaulBleConnect,
     ble_uuids::{MAIN_SERVICE_UUID, MSG_CHAR, MSG_SERVICE_UUID, READ_CHAR},
 };
 
@@ -113,14 +115,14 @@ impl QaulBleConnect for QaulBleService {
             return Ok(());
         }
 
+        let main_service_uuid = Uuid::parse_str(MAIN_SERVICE_UUID)?;
+
         // ==================================================================================
         // ------------------------- SET UP ADVERTISEMENT -----------------------------------
         // ==================================================================================
 
         let advertisement = Advertisement {
-            service_uuids: vec![Uuid::parse_str(MAIN_SERVICE_UUID)?]
-                .into_iter()
-                .collect(),
+            service_uuids: vec![main_service_uuid.clone()].into_iter().collect(),
             tx_power: advert_mode,
             discoverable: Some(true),
             local_name: Some("qaul.net".to_string()),
@@ -144,7 +146,7 @@ impl QaulBleConnect for QaulBleService {
         let (mut main_chara_ctrl, main_chara_handle) = characteristic_control();
 
         let main_service = Service {
-            uuid: Uuid::parse_str(MAIN_SERVICE_UUID)?,
+            uuid: main_service_uuid.clone(),
             primary: true,
             characteristics: vec![Characteristic {
                 uuid: Uuid::parse_str(READ_CHAR)?,
@@ -201,13 +203,14 @@ impl QaulBleConnect for QaulBleService {
         // --------------------------------- SCAN -------------------------------------------
         // ==================================================================================
 
+        let block_list = &self.device_block_list;
         let mut device_stream = self
             .adapter
             .discover_devices()
             .await?
             .filter_map(move |evt| match evt {
                 AdapterEvent::DeviceAdded(device) => {
-                    if self.device_block_list.contains(&device) {
+                    if block_list.contains(&device) {
                         std::future::ready(None)
                     } else {
                         std::future::ready(Some(device))
@@ -232,8 +235,26 @@ impl QaulBleConnect for QaulBleService {
                 Some(msg_event) = msg_chara_ctrl.next() => {
 
                 },
-                Some(device) = device_stream.next() => {
-                    debug!("Found device {}", device)
+                Some(addr) = device_stream.next() => {
+                    let device = self.adapter.device(addr)?;
+                    let uuids = device.uuids().await?.unwrap_or_default();
+                    trace!("Discovered device {} with service UUIDs {:?}", mac_to_string(&addr), &uuids);
+
+                    if !uuids.contains(&main_service_uuid) { continue; }
+                    debug!("Discovered qaul bluetooth device {}", mac_to_string(&addr));
+
+                    if !device.is_connected().await? {
+                        device.connect().await?;
+                    }
+
+                    for service in device.services().await? {
+                        let service_uuid = service.uuid().await?;
+                        if service_uuid != main_service_uuid { continue; }
+                        for char in service.characteristics().await? {
+                            let flags = char.flags().await?;
+                            
+                        }
+                    }
                 }
             }
         }
