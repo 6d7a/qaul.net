@@ -5,10 +5,11 @@ extern crate simplelog;
 mod ble;
 mod rpc;
 
-use ble::ble_service::QaulBleService;
+use ble::{ble_service::QaulBleService, ble_connect::QaulBleConnect};
 use filetime::FileTime;
 use rpc::msg_loop::listen_for_sys_msgs;
 use simplelog::*;
+use tokio::sync::mpsc::channel;
 use std::{
     collections::BTreeMap,
     fs::File,
@@ -92,10 +93,12 @@ async fn main() {
     .unwrap();
 
     let rpc_receiver = rpc::init();
-    let ble_service = QaulBleService::new().await.unwrap_or_else(|err| {
+    let mut ble_service = QaulBleService::new().await.unwrap_or_else(|err| {
         error!("{:#?}", err);
         std::process::exit(1);
     });
 
-    listen_for_sys_msgs(Box::new(rpc_receiver), Box::new(ble_service)).await;
+    let (tx, rx) = channel::<bool>(1);
+    ble_service.advertise_scan_listen(rx, bytes::Bytes::from(&b"Test"[..]), None).await.unwrap();
+    //listen_for_sys_msgs(Box::new(rpc_receiver), Box::new(ble_service)).await;
 }

@@ -26,16 +26,16 @@ pub async fn listen_for_sys_msgs(
                     continue;
                 }
                 match msg.message.unwrap() {
-                    InfoRequest(req) => ble_service.get_device_info().await?,
+                    InfoRequest(_) => ble_service.get_device_info().await?,
                     StartRequest(req) => {
                         let (tx, rx) = channel::<bool>(1);
                         stop_sender = Some(tx);
                         let qaul_id = Bytes::from(req.qaul_id);
                         ble_service.advertise_scan_listen(rx, qaul_id, None).await?
                     }
-                    StopRequest(req) => {
+                    StopRequest(_) => {
                         if let Some(tx) = stop_sender.clone() {
-                            tx.send(true);
+                            let _ = tx.send(true);
                         }
                     }
                     DirectSend(req) => ble_service.send_directly().await?,

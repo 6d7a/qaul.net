@@ -1,5 +1,5 @@
 use super::{
-    proto_sys::{self, BleError, BleStartResult},
+    proto_sys::{self, BleError, BleStartResult, BleDeviceDiscovered},
     send_to_ui,
 };
 
@@ -15,4 +15,12 @@ pub fn send_result_already_running() {
         error_reason: BleError::UnknownError.into(),
         error_message: "Received start request, but BLE service is already running!".into(),
     }));
+}
+
+pub fn send_device_found(qaul_id: Vec<u8>, rssi: i32) {
+    send_ble_sys_msg(proto_sys::ble::Message::DeviceDiscovered(BleDeviceDiscovered {
+        qaul_id,
+        rssi,
+    }))
+
 }

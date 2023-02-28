@@ -1,25 +1,18 @@
-use std::{error::Error, pin::Pin};
+use std::error::Error;
 
 use async_trait::async_trait;
 use bluer::{
     adv::{Advertisement, AdvertisementHandle},
-    gatt::local::{
-        characteristic_control, service_control, Application, ApplicationHandle, Characteristic,
-        CharacteristicControlHandle, CharacteristicRead, CharacteristicWrite,
-        CharacteristicWriteMethod, Service, ServiceControlHandle,
-    },
+    gatt::{local::*, CharacteristicReader},
     Adapter, AdapterEvent, Address, Session, Uuid,
 };
 use bytes::Bytes;
-use futures::{FutureExt, StreamExt};
+use futures::{stream::FuturesUnordered, FutureExt, StreamExt};
 use tokio::sync::mpsc::Receiver;
 
 use crate::{
     ble::utils::mac_to_string,
-    rpc::{
-        proto_sys::{ble::Message, BleDeviceInfo, BleInfoResponse},
-        utils::{send_ble_sys_msg, send_result_already_running},
-    },
+    rpc::{proto_sys::*, utils::*},
 };
 
 use super::{
@@ -99,7 +92,7 @@ impl QaulBleConnect for QaulBleService {
         let response = BleInfoResponse {
             device: Some(this_device),
         };
-        send_ble_sys_msg(Message::InfoResponse(response));
+        send_ble_sys_msg(ble::Message::InfoResponse(response));
         Ok(())
     }
 
@@ -116,6 +109,7 @@ impl QaulBleConnect for QaulBleService {
         }
 
         let main_service_uuid = Uuid::parse_str(MAIN_SERVICE_UUID)?;
+        let read_char_uuid = Uuid::parse_str(READ_CHAR)?;
 
         // ==================================================================================
         // ------------------------- SET UP ADVERTISEMENT -----------------------------------
@@ -149,7 +143,7 @@ impl QaulBleConnect for QaulBleService {
             uuid: main_service_uuid.clone(),
             primary: true,
             characteristics: vec![Characteristic {
-                uuid: Uuid::parse_str(READ_CHAR)?,
+                uuid: read_char_uuid,
                 read: Some(CharacteristicRead {
                     read: true,
                     fun: Box::new(move |req| {
@@ -223,11 +217,19 @@ impl QaulBleConnect for QaulBleService {
         // --------------------------------- MAIN BLE LOOP ----------------------------------
         // ==================================================================================
 
+        let mut notifiers: Vec<CharacteristicReader> = vec![];
+
         loop {
             tokio::select! {
                 _ = terminator.recv() => {
                     // Stop advertising, scanning, and listening and return
                     break;
+                },
+                Some(Ok(notif_result)) = async {
+                    let mut futures = FuturesUnordered::from_iter(notifiers.iter().map(|n| n.recv()));
+                    futures.next().await
+                }, if !notifiers.is_empty() => {
+
                 },
                 Some(main_event) = main_chara_ctrl.next() => {
 
@@ -236,15 +238,17 @@ impl QaulBleConnect for QaulBleService {
 
                 },
                 Some(addr) = device_stream.next() => {
+                    let stringified_addr = mac_to_string(&addr);
                     let device = self.adapter.device(addr)?;
                     let uuids = device.uuids().await?.unwrap_or_default();
-                    trace!("Discovered device {} with service UUIDs {:?}", mac_to_string(&addr), &uuids);
+                    trace!("Discovered device {} with service UUIDs {:?}", &stringified_addr, &uuids);
 
                     if !uuids.contains(&main_service_uuid) { continue; }
-                    debug!("Discovered qaul bluetooth device {}", mac_to_string(&addr));
+                    debug!("Discovered qaul bluetooth device {}", &stringified_addr);
 
                     if !device.is_connected().await? {
                         device.connect().await?;
+                        info!("Connected to device {}", &stringified_addr);
                     }
 
                     for service in device.services().await? {
@@ -252,7 +256,17 @@ impl QaulBleConnect for QaulBleService {
                         if service_uuid != main_service_uuid { continue; }
                         for char in service.characteristics().await? {
                             let flags = char.flags().await?;
-                            
+                            if flags.notify || flags.indicate {
+                                notifiers.push(char.notify_io().await?);
+                                info!(
+                                    "Setting up notification for characteristic {} of device {}", 
+                                    char.uuid().await?, 
+                                    &stringified_addr);
+                            } else if flags.read && char.uuid().await? == read_char_uuid {
+                                let remote_qaul_id = char.read().await?;
+                                let rssi = device.rssi().await?.unwrap_or(999) as i32;
+                                send_device_found(remote_qaul_id, rssi)
+                            }
                         }
                     }
                 }

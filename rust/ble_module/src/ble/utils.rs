@@ -1,6 +1,6 @@
 use bluer::Address;
 
-pub fn mac_to_string(addr: Address) -> String {
+pub fn mac_to_string(addr: &Address) -> String {
     addr.map(|octet| format!("{:02x?}", octet)).join(":")
 }
 
@@ -11,7 +11,7 @@ mod tests {
     #[test]
     fn pretty_prints_address() {
         assert_eq!(
-            mac_to_string(Address::any()),
+            mac_to_string(&Address::any()),
             String::from("00:00:00:00:00:00")
         )
     }
