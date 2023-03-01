@@ -217,7 +217,9 @@ impl QaulBleConnect for QaulBleService {
         // --------------------------------- MAIN BLE LOOP ----------------------------------
         // ==================================================================================
 
-        let mut notifiers: Vec<CharacteristicReader> = vec![];
+        send_start_successful();
+
+        let mut msg_receivers: Vec<CharacteristicReader> = vec![];
 
         loop {
             tokio::select! {
@@ -225,17 +227,29 @@ impl QaulBleConnect for QaulBleService {
                     // Stop advertising, scanning, and listening and return
                     break;
                 },
-                Some(Ok(notif_result)) = async {
-                    let mut futures = FuturesUnordered::from_iter(notifiers.iter().map(|n| n.recv()));
+                Some((Ok(data), from)) = async {
+                    let mut futures = FuturesUnordered::from_iter(
+                        msg_receivers.iter()
+                            .map(|n| {
+                                n.recv().map(|msg| (msg, n.device_address()))
+                            })
+                    );
                     futures.next().await
-                }, if !notifiers.is_empty() => {
-
+                }, if !msg_receivers.is_empty() => {
+                    info!("Received {} bytes of data from {}", data.len(), mac_to_string(&from));
+                    send_direct_received(from.0.to_vec(), data)
                 },
-                Some(main_event) = main_chara_ctrl.next() => {
-
+                Some(_main_event) = main_chara_ctrl.next() => {
+                    // TODO: should something be reported to the UI? 
                 },
                 Some(msg_event) = msg_chara_ctrl.next() => {
-
+                    match msg_event {
+                        CharacteristicControlEvent::Write(write) => {
+                            msg_receivers.push(write.accept()?)
+                        },
+                        // TODO: should the notifiy handle do something?
+                        CharacteristicControlEvent::Notify(_) => (),
+                    }
                 },
                 Some(addr) = device_stream.next() => {
                     let stringified_addr = mac_to_string(&addr);
@@ -257,10 +271,10 @@ impl QaulBleConnect for QaulBleService {
                         for char in service.characteristics().await? {
                             let flags = char.flags().await?;
                             if flags.notify || flags.indicate {
-                                notifiers.push(char.notify_io().await?);
+                                msg_receivers.push(char.notify_io().await?);
                                 info!(
-                                    "Setting up notification for characteristic {} of device {}", 
-                                    char.uuid().await?, 
+                                    "Setting up notification for characteristic {} of device {}",
+                                    char.uuid().await?,
                                     &stringified_addr);
                             } else if flags.read && char.uuid().await? == read_char_uuid {
                                 let remote_qaul_id = char.read().await?;
