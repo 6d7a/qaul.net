@@ -5,20 +5,21 @@ extern crate simplelog;
 mod ble;
 mod rpc;
 
-use ble::{ble_service::QaulBleService, ble_connect::QaulBleConnect};
+use ble::ble_service::QaulBleService;
 use filetime::FileTime;
-use rpc::msg_loop::listen_for_sys_msgs;
+use rpc::{msg_loop::listen_for_sys_msgs, proto_sys::BleDirectSend};
 use simplelog::*;
-use tokio::sync::mpsc::channel;
 use std::{
     collections::BTreeMap,
     fs::File,
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use crate::ble::ble_service::IdleBleService;
+
 /// initialize and start the ble_module
 ///
-#[tokio::main]
+#[async_std::main]
 async fn main() {
     // --- initialize logger ---
     // prepare logger path
@@ -93,12 +94,18 @@ async fn main() {
     .unwrap();
 
     let rpc_receiver = rpc::init();
-    let mut ble_service = QaulBleService::new().await.unwrap_or_else(|err| {
+    let ble_service = IdleBleService::new().await.unwrap_or_else(|err| {
         error!("{:#?}", err);
         std::process::exit(1);
     });
 
-    let (tx, rx) = channel::<bool>(1);
-    ble_service.advertise_scan_listen(rx, bytes::Bytes::from(&b"Test"[..]), None).await.unwrap();
+    match ble_service {
+        QaulBleService::Idle(srv) => {
+            srv.advertise_scan_listen(bytes::Bytes::from(&b"Test"[..]), None)
+                .await;
+        }
+        QaulBleService::Started(_) => (),
+    }
+
     //listen_for_sys_msgs(Box::new(rpc_receiver), Box::new(ble_service)).await;
 }

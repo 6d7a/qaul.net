@@ -16,14 +16,13 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use prost::Message;
 use state::Storage;
-use tokio::sync::mpsc;
 
 use proto_sys::Ble;
 
 /// receiver of the mpsc channel: ui ---> ble_module
 static EXTERN_RECEIVE: Storage<crossbeam_channel::Receiver<Vec<u8>>> = Storage::new();
 /// sender of the mpsc channel: ui ---> ble_module
-static EXTERN_SEND: Storage<tokio::sync::mpsc::Sender<Bytes>> = Storage::new();
+static EXTERN_SEND: Storage<async_std::channel::Sender<Bytes>> = Storage::new();
 /// sender handle of the mpsc channel: ble_module ---> ui
 static BLE_MODULE_SEND: Storage<crossbeam_channel::Sender<Vec<u8>>> = Storage::new();
 
@@ -33,7 +32,7 @@ pub trait SysRpcReceiver {
 }
 
 pub struct BleRpc {
-    receiver: tokio::sync::mpsc::Receiver<Bytes>,
+    receiver: async_std::channel::Receiver<Bytes>,
 }
 
 #[async_trait]
@@ -42,6 +41,7 @@ impl SysRpcReceiver for BleRpc {
         self.receiver
             .recv()
             .await
+            .ok()
             .map(&process_received_message)
             .flatten()
     }
@@ -53,8 +53,7 @@ impl SysRpcReceiver for BleRpc {
 pub fn init() -> BleRpc {
     // create channels
     let (ble_send, ui_rec) = crossbeam_channel::bounded::<Vec<u8>>(32);
-    let (ui_send, ble_rec) = mpsc::channel::<Bytes>(32);
-
+    let (ui_send, ble_rec) = async_std::channel::bounded(32);
     // save to state
     EXTERN_RECEIVE.set(ui_rec);
     EXTERN_SEND.set(ui_send);
