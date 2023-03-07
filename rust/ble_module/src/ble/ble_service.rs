@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use async_std::{channel::Sender, prelude::*};
+use async_std::{channel::Sender, prelude::*, stream};
 use bluer::{
     adv::{Advertisement, AdvertisementHandle},
     gatt::{local::*, CharacteristicReader},
@@ -195,19 +195,24 @@ impl IdleBleService {
         // --------------------------------- MAIN BLE LOOP ----------------------------------
         // ==================================================================================
 
-        let (tx, rx) = async_std::channel::bounded::<bool>(1);
+        let (stop_tx, stop_rx) = async_std::channel::bounded::<bool>(1);
 
-        let stop_stream = rx.map(|_| BleMainLoopEvent::Stop);
+        let (message_tx, message_rx) = async_std::channel::bounded::<BleMainLoopEvent>(32);
+        let stop_stream = stop_rx.map(|_| BleMainLoopEvent::Stop);
         let main_evt_stream = main_chara_ctrl.map(BleMainLoopEvent::MainCharEvent);
         let msg_evt_stream = msg_chara_ctrl.map(BleMainLoopEvent::MsgCharEvent);
 
-        let mut merged_ble_streams =
-            (stop_stream, main_evt_stream, msg_evt_stream, device_stream).merge();
+        let mut merged_ble_streams = (
+            stop_stream,
+            main_evt_stream,
+            msg_evt_stream,
+            device_stream,
+            message_rx,
+        )
+            .merge();
 
         debug!("Set up advertisement and scan filter, entering BLE main loop.");
         send_start_successful();
-
-        let mut msg_receivers: Vec<CharacteristicReader> = vec![];
 
         while let Some(evt) = merged_ble_streams.next().await {
             match evt {
@@ -215,47 +220,37 @@ impl IdleBleService {
                     info!("Received stop signal, stopping advertising, scanning, and listening.");
                     break;
                 }
-                BleMainLoopEvent::MessageReceived(e) => todo!(),
-                BleMainLoopEvent::MainCharEvent(e) => todo!(),
-                BleMainLoopEvent::MsgCharEvent(e) => todo!(),
-                BleMainLoopEvent::DeviceDiscovered(device) => {
-                    let stringified_addr = mac_to_string(&device.address());
-                    let uuids = device.uuids().await.ok().flatten().unwrap_or_default();
-                    trace!(
-                        "Discovered device {} with service UUIDs {:?}",
-                        &stringified_addr,
-                        &uuids
+                BleMainLoopEvent::MessageReceived(e) => {
+                    info!(
+                        "Received {} bytes of data from {}",
+                        e.0.len(),
+                        mac_to_string(&e.1)
                     );
-
-                    if !uuids.contains(&main_service_uuid()) {
-                        continue;
-                    }
-                    debug!("Discovered qaul bluetooth device {}", &stringified_addr);
-
-                    if !device.is_connected().await.unwrap_or(false) {
-                        device.connect().await;
-                        info!("Connected to device {}", &stringified_addr);
-                    }
-
-                    for service in device.services().await.unwrap() {
-                        let service_uuid = service.uuid().await.unwrap_or_default();
-                        if service_uuid != main_service_uuid() {
-                            continue;
-                        }
-                        for char in service.characteristics().await.unwrap() {
-                            let flags = char.flags().await.unwrap();
-                            if flags.notify || flags.indicate {
-                                msg_receivers.push(char.notify_io().await.unwrap());
-                                info!(
-                                    "Setting up notification for characteristic {} of device {}",
-                                    char.uuid().await.unwrap(),
-                                    &stringified_addr
-                                );
-                            } else if flags.read && char.uuid().await.unwrap() == read_char() {
-                                let remote_qaul_id = char.read().await.unwrap();
-                                let rssi = device.rssi().await.ok().flatten().unwrap_or(999) as i32;
-                                send_device_found(remote_qaul_id, rssi)
+                    send_direct_received(e.1 .0.to_vec(), e.0)
+                }
+                BleMainLoopEvent::MainCharEvent(e) => todo!(),
+                BleMainLoopEvent::MsgCharEvent(e) => {
+                    match e {
+                        CharacteristicControlEvent::Write(write) => {
+                            if let Ok(reader) = write.accept() {
+                                let message_tx = message_tx.clone();
+                                let _ = self.spawn_msg_listener(reader, message_tx);
                             }
+                        }
+                        // TODO: should the notifiy handle do something?
+                        CharacteristicControlEvent::Notify(_) => (),
+                    }
+                }
+                BleMainLoopEvent::DeviceDiscovered(device) => {
+                    match self.on_device_discovered(&device).await {
+                        Ok(msg_receivers) => {
+                            for rec in msg_receivers {
+                                let message_tx = message_tx.clone();
+                                let _ = self.spawn_msg_listener(rec, message_tx);
+                            }
+                        }
+                        Err(err) => {
+                            error!("{:#?}", err);
                         }
                     }
                 }
@@ -337,8 +332,74 @@ impl IdleBleService {
             adapter: self.adapter,
             session: self.session,
             device_block_list: self.device_block_list,
-            stop_handle: tx,
+            stop_handle: stop_tx,
         })
+    }
+
+    async fn on_device_discovered(
+        &self,
+        device: &Device,
+    ) -> Result<Vec<CharacteristicReader>, Box<dyn Error>> {
+        let mut msg_receivers: Vec<CharacteristicReader> = vec![];
+
+        let stringified_addr = mac_to_string(&device.address());
+        let uuids = device.uuids().await?.unwrap_or_default();
+        trace!(
+            "Discovered device {} with service UUIDs {:?}",
+            &stringified_addr,
+            &uuids
+        );
+
+        if !uuids.contains(&main_service_uuid()) {
+            return Ok(msg_receivers);
+        }
+        debug!("Discovered qaul bluetooth device {}", &stringified_addr);
+
+        if !device.is_connected().await? {
+            device.connect().await?;
+            info!("Connected to device {}", &stringified_addr);
+        }
+
+        for service in device.services().await? {
+            let service_uuid = service.uuid().await?;
+            if service_uuid != main_service_uuid() {
+                continue;
+            }
+            for char in service.characteristics().await? {
+                let flags = char.flags().await?;
+                if flags.notify || flags.indicate {
+                    msg_receivers.push(char.notify_io().await?);
+                    info!(
+                        "Setting up notification for characteristic {} of device {}",
+                        char.uuid().await?,
+                        &stringified_addr
+                    );
+                } else if flags.read && char.uuid().await? == read_char() {
+                    let remote_qaul_id = char.read().await?;
+                    let rssi = device.rssi().await?.unwrap_or(999) as i32;
+                    send_device_found(remote_qaul_id, rssi)
+                }
+            }
+        }
+        Ok(msg_receivers)
+    }
+
+    async fn spawn_msg_listener(
+        &self,
+        reader: CharacteristicReader,
+        message_tx: Sender<BleMainLoopEvent>,
+    ) {
+        async_std::task::spawn(async move {
+            while let Some(msg) = reader.recv().await.ok() {
+                let _ = message_tx
+                    .send(BleMainLoopEvent::MessageReceived((
+                        msg,
+                        reader.device_address(),
+                    )))
+                    .await
+                    .map_err(|err| error!("{:#?}", err));
+            }
+        });
     }
 }
 
