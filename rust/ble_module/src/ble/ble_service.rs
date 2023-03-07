@@ -1,17 +1,13 @@
 use std::error::Error;
 
-use async_std::prelude::*;
-use async_std::stream;
+use async_std::{channel::Sender, prelude::*};
 use bluer::{
     adv::{Advertisement, AdvertisementHandle},
     gatt::{local::*, CharacteristicReader},
-    Adapter, AdapterEvent, Address, Device, Session, Uuid,
+    Adapter, AdapterEvent, Address, Device, Session,
 };
 use bytes::Bytes;
-use futures::{
-    channel::oneshot::{channel, Sender},
-    FutureExt,
-};
+use futures::FutureExt;
 use futures_concurrency::stream::Merge;
 
 use crate::ble::ble_uuids::main_service_uuid;
@@ -182,7 +178,6 @@ impl IdleBleService {
                     if self.device_block_list.contains(&addr) {
                         return None;
                     }
-                    let stringified_addr = mac_to_string(&addr);
                     match self.adapter.device(addr) {
                         Ok(device) => Some(BleMainLoopEvent::DeviceDiscovered(device)),
                         Err(_) => None,
@@ -200,13 +195,14 @@ impl IdleBleService {
         // --------------------------------- MAIN BLE LOOP ----------------------------------
         // ==================================================================================
 
-        let (tx, rx) = channel::<bool>();
+        let (tx, rx) = async_std::channel::bounded::<bool>(1);
 
-        let stop_stream = stream::once(async { rx.await }).map(|_| BleMainLoopEvent::Stop);
+        let stop_stream = rx.map(|_| BleMainLoopEvent::Stop);
         let main_evt_stream = main_chara_ctrl.map(BleMainLoopEvent::MainCharEvent);
         let msg_evt_stream = msg_chara_ctrl.map(BleMainLoopEvent::MsgCharEvent);
 
-        let mut merged_ble_streams = (stop_stream, main_evt_stream, msg_evt_stream).merge();
+        let mut merged_ble_streams =
+            (stop_stream, main_evt_stream, msg_evt_stream, device_stream).merge();
 
         debug!("Set up advertisement and scan filter, entering BLE main loop.");
         send_start_successful();
@@ -216,18 +212,24 @@ impl IdleBleService {
         while let Some(evt) = merged_ble_streams.next().await {
             match evt {
                 BleMainLoopEvent::Stop => {
-                        // Stop advertising, scanning, and listening and return
-                        break;
-                },
+                    info!("Received stop signal, stopping advertising, scanning, and listening.");
+                    break;
+                }
                 BleMainLoopEvent::MessageReceived(e) => todo!(),
                 BleMainLoopEvent::MainCharEvent(e) => todo!(),
                 BleMainLoopEvent::MsgCharEvent(e) => todo!(),
                 BleMainLoopEvent::DeviceDiscovered(device) => {
                     let stringified_addr = mac_to_string(&device.address());
                     let uuids = device.uuids().await.ok().flatten().unwrap_or_default();
-                    trace!("Discovered device {} with service UUIDs {:?}", &stringified_addr, &uuids);
+                    trace!(
+                        "Discovered device {} with service UUIDs {:?}",
+                        &stringified_addr,
+                        &uuids
+                    );
 
-                    if !uuids.contains(&main_service_uuid()) { continue; }
+                    if !uuids.contains(&main_service_uuid()) {
+                        continue;
+                    }
                     debug!("Discovered qaul bluetooth device {}", &stringified_addr);
 
                     if !device.is_connected().await.unwrap_or(false) {
@@ -237,15 +239,18 @@ impl IdleBleService {
 
                     for service in device.services().await.unwrap() {
                         let service_uuid = service.uuid().await.unwrap_or_default();
-                        if service_uuid != main_service_uuid() { continue; }
-                        for char in service.characteristics().await.unwrap(){
+                        if service_uuid != main_service_uuid() {
+                            continue;
+                        }
+                        for char in service.characteristics().await.unwrap() {
                             let flags = char.flags().await.unwrap();
                             if flags.notify || flags.indicate {
                                 msg_receivers.push(char.notify_io().await.unwrap());
                                 info!(
                                     "Setting up notification for characteristic {} of device {}",
                                     char.uuid().await.unwrap(),
-                                    &stringified_addr);
+                                    &stringified_addr
+                                );
                             } else if flags.read && char.uuid().await.unwrap() == read_char() {
                                 let remote_qaul_id = char.read().await.unwrap();
                                 let rssi = device.rssi().await.ok().flatten().unwrap_or(999) as i32;
@@ -253,7 +258,7 @@ impl IdleBleService {
                             }
                         }
                     }
-                },
+                }
             }
         }
 
