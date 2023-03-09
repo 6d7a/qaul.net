@@ -27,8 +27,6 @@ pub enum QaulBleService {
 enum QaulBleHandle {
     AdvertisementHandle(AdvertisementHandle),
     AppHandle(ApplicationHandle),
-    CharaHandle(CharacteristicControlHandle),
-    ServiceHandle(ServiceControlHandle),
 }
 
 pub struct StartedBleService {
