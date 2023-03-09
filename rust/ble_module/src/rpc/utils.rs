@@ -17,6 +17,14 @@ pub fn send_result_already_running() {
     }));
 }
 
+pub fn send_result_not_running() {
+    send_ble_sys_msg(proto_sys::ble::Message::StartResult(BleStartResult {
+        success: true,
+        error_reason: BleError::UnknownError.into(),
+        error_message: "Received direct send request, but BLE service is not yet running!".into(),
+    }));
+}
+
 pub fn send_start_successful() {
     send_ble_sys_msg(proto_sys::ble::Message::StartResult(BleStartResult {
         success: true,
@@ -34,5 +42,17 @@ pub fn send_device_found(qaul_id: Vec<u8>, rssi: i32) {
 pub fn send_direct_received(from: Vec<u8>, data: Vec<u8>) {
     send_ble_sys_msg(proto_sys::ble::Message::DirectReceived(
         proto_sys::BleDirectReceived { from, data },
+    ))
+}
+
+pub fn send_direct_send_success(id: Vec<u8>) {
+    send_ble_sys_msg(proto_sys::ble::Message::DirectSendResult(
+        proto_sys::BleDirectSendResult { id, success: true, error_message: "".into()  },
+    ))
+}
+
+pub fn send_direct_send_error(id: Vec<u8>, error_message: String) {
+    send_ble_sys_msg(proto_sys::ble::Message::DirectSendResult(
+        proto_sys::BleDirectSendResult { id, success: false, error_message },
     ))
 }

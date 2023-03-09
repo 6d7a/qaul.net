@@ -3,12 +3,18 @@ use std::error::Error;
 use async_std::task::spawn;
 use bytes::Bytes;
 
-
 use crate::{
-    ble::{ble_service::{get_device_info, QaulBleService}, self},
+    ble::{
+        self,
+        ble_service::{get_device_info, QaulBleService},
+    },
     rpc::{
         proto_sys::{ble::Message::*, BleDeviceInfo},
-        SysRpcReceiver, utils::send_result_already_running,
+        utils::{
+            send_direct_send_success, send_result_already_running, send_result_not_running,
+            send_start_successful, send_direct_send_error,
+        },
+        SysRpcReceiver,
     },
 };
 
@@ -31,27 +37,31 @@ pub async fn listen_for_sys_msgs(
                     continue;
                 }
                 match msg.message.unwrap() {
-                    StartRequest(req) => {
-                        match ble_service {
-                            QaulBleService::Idle(svc) => {
-                                let qaul_id = Bytes::from(req.qaul_id);
-                                ble_service = svc
-                                    .advertise_scan_listen(qaul_id, None)
-                                    .await
-                            },
-                            QaulBleService::Started(_) => {
-                                warn!("Received Start Request, but bluetooth service is already running!");
-                                send_result_already_running()
-                            },
+                    StartRequest(req) => match ble_service {
+                        QaulBleService::Idle(svc) => {
+                            let qaul_id = Bytes::from(req.qaul_id);
+                            ble_service = svc.advertise_scan_listen(qaul_id, None).await;
+                            debug!("Set up advertisement and scan filter, entering BLE main loop.");
+                            send_start_successful();
                         }
-                        
-                    }
-                    StopRequest(_) => {
-                        
-                    }
-                    DirectSend(req) => {
-                        
-                    }
+                        QaulBleService::Started(_) => {
+                            warn!(
+                                "Received Start Request, but bluetooth service is already running!"
+                            );
+                            send_result_already_running()
+                        }
+                    },
+                    StopRequest(_) => {}
+                    DirectSend(req) => match ble_service {
+                        QaulBleService::Started(ref svc) => match svc.direct_send(&req).await {
+                            Ok(_) => send_direct_send_success(req.receiver_id),
+                            Err(err) => send_direct_send_error(req.receiver_id, err.to_string()),
+                        },
+                        QaulBleService::Idle(_) => {
+                            warn!("Received Direct Send Request, but bluetooth service is not running!");
+                            send_result_not_running()
+                        }
+                    },
                     InfoRequest(_) => {
                         spawn(async {
                             get_device_info().await.unwrap_or_else(|err| {

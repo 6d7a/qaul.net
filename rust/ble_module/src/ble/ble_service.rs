@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{cell::RefCell, collections::HashMap, error::Error};
 
 use async_std::{channel::Sender, prelude::*, stream};
 use bluer::{
@@ -36,6 +36,7 @@ pub struct StartedBleService {
     adapter: Adapter,
     session: Session,
     device_block_list: Vec<Address>,
+    address_lookup: RefCell<HashMap<Vec<u8>, Address>>,
     stop_handle: Sender<bool>,
 }
 
@@ -44,6 +45,7 @@ pub struct IdleBleService {
     adapter: Adapter,
     session: Session,
     device_block_list: Vec<Address>,
+    address_lookup: RefCell<HashMap<Vec<u8>, Address>>,
 }
 
 enum BleMainLoopEvent {
@@ -66,6 +68,7 @@ impl IdleBleService {
             adapter,
             session,
             device_block_list: vec![],
+            address_lookup: RefCell::new(HashMap::new()),
         }))
     }
 }
@@ -108,7 +111,7 @@ impl IdleBleService {
         // ==================================================================================
 
         let (_, main_service_handle) = service_control();
-        let (mut main_chara_ctrl, main_chara_handle) = characteristic_control();
+        let (main_chara_ctrl, main_chara_handle) = characteristic_control();
 
         let main_service = Service {
             uuid: main_service_uuid(),
@@ -135,7 +138,7 @@ impl IdleBleService {
         };
 
         let (_, msg_service_handle) = service_control();
-        let (mut msg_chara_ctrl, msg_chara_handle) = characteristic_control();
+        let (msg_chara_ctrl, msg_chara_handle) = characteristic_control();
 
         let msg_service = Service {
             uuid: msg_service_uuid(),
@@ -211,9 +214,6 @@ impl IdleBleService {
         )
             .merge();
 
-        debug!("Set up advertisement and scan filter, entering BLE main loop.");
-        send_start_successful();
-
         while let Some(evt) = merged_ble_streams.next().await {
             match evt {
                 BleMainLoopEvent::Stop => {
@@ -228,19 +228,18 @@ impl IdleBleService {
                     );
                     send_direct_received(e.1 .0.to_vec(), e.0)
                 }
-                BleMainLoopEvent::MainCharEvent(e) => todo!(),
-                BleMainLoopEvent::MsgCharEvent(e) => {
-                    match e {
-                        CharacteristicControlEvent::Write(write) => {
-                            if let Ok(reader) = write.accept() {
-                                let message_tx = message_tx.clone();
-                                let _ = self.spawn_msg_listener(reader, message_tx);
-                            }
-                        }
-                        // TODO: should the notifiy handle do something?
-                        CharacteristicControlEvent::Notify(_) => (),
-                    }
+                BleMainLoopEvent::MainCharEvent(e) => {
+                    // TODO: should main character events be sent to the UI?
                 }
+                BleMainLoopEvent::MsgCharEvent(e) => match e {
+                    CharacteristicControlEvent::Write(write) => {
+                        if let Ok(reader) = write.accept() {
+                            let message_tx = message_tx.clone();
+                            let _ = self.spawn_msg_listener(reader, message_tx);
+                        }
+                    }
+                    CharacteristicControlEvent::Notify(_) => (),
+                },
                 BleMainLoopEvent::DeviceDiscovered(device) => {
                     match self.on_device_discovered(&device).await {
                         Ok(msg_receivers) => {
@@ -257,82 +256,13 @@ impl IdleBleService {
             }
         }
 
-        // loop {
-        //     tokio::select! {
-        //         cmd = rpc_receiver.recv() => {
-        //             if cmd.is_none() {
-        //                 // Stop advertising, scanning, and listening and return
-        //                 break;
-        //             } else {
-
-        //             }
-        //         },
-        //         Some((Ok(data), from)) = async {
-        //             let mut futures = FuturesUnordered::from_iter(
-        //                 msg_receivers.iter()
-        //                     .map(|n| {
-        //                         n.recv().map(|msg| (msg, n.device_address()))
-        //                     })
-        //             );
-        //             futures.next().await
-        //         }, if !msg_receivers.is_empty() => {
-        //             info!("Received {} bytes of data from {}", data.len(), mac_to_string(&from));
-        //             send_direct_received(from.0.to_vec(), data)
-        //         },
-        //         Some(_main_event) = main_chara_ctrl.next() => {
-        //             // TODO: should something be reported to the UI?
-        //         },
-        //         Some(msg_event) = msg_chara_ctrl.next() => {
-        //             match msg_event {
-        //                 CharacteristicControlEvent::Write(write) => {
-        //                     msg_receivers.push(write.accept()?)
-        //                 },
-        //                 // TODO: should the notifiy handle do something?
-        //                 CharacteristicControlEvent::Notify(_) => (),
-        //             }
-        //         },
-        //         Some(addr) = device_stream.next() => {
-        //             let stringified_addr = mac_to_string(&addr);
-        //             let device = self.adapter.device(addr)?;
-        //             let uuids = device.uuids().await?.unwrap_or_default();
-        //             trace!("Discovered device {} with service UUIDs {:?}", &stringified_addr, &uuids);
-
-        //             if !uuids.contains(&main_service_uuid) { continue; }
-        //             debug!("Discovered qaul bluetooth device {}", &stringified_addr);
-
-        //             if !device.is_connected().await? {
-        //                 device.connect().await?;
-        //                 info!("Connected to device {}", &stringified_addr);
-        //             }
-
-        //             for service in device.services().await? {
-        //                 let service_uuid = service.uuid().await?;
-        //                 if service_uuid != main_service_uuid { continue; }
-        //                 for char in service.characteristics().await? {
-        //                     let flags = char.flags().await?;
-        //                     if flags.notify || flags.indicate {
-        //                         msg_receivers.push(char.notify_io().await?);
-        //                         info!(
-        //                             "Setting up notification for characteristic {} of device {}",
-        //                             char.uuid().await?,
-        //                             &stringified_addr);
-        //                     } else if flags.read && char.uuid().await? == read_char_uuid {
-        //                         let remote_qaul_id = char.read().await?;
-        //                         let rssi = device.rssi().await?.unwrap_or(999) as i32;
-        //                         send_device_found(remote_qaul_id, rssi)
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
-
         QaulBleService::Started(StartedBleService {
             ble_handles: self.ble_handles,
             adapter: self.adapter,
             session: self.session,
             device_block_list: self.device_block_list,
             stop_handle: stop_tx,
+            address_lookup: self.address_lookup,
         })
     }
 
@@ -376,6 +306,9 @@ impl IdleBleService {
                     );
                 } else if flags.read && char.uuid().await? == read_char() {
                     let remote_qaul_id = char.read().await?;
+                    self.address_lookup
+                        .borrow_mut()
+                        .insert(remote_qaul_id.clone(), device.address());
                     let rssi = device.rssi().await?.unwrap_or(999) as i32;
                     send_device_found(remote_qaul_id, rssi)
                 }
@@ -391,6 +324,9 @@ impl IdleBleService {
     ) {
         async_std::task::spawn(async move {
             while let Some(msg) = reader.recv().await.ok() {
+                if message_tx.receiver_count() != 0 {
+                    break;
+                }
                 let _ = message_tx
                     .send(BleMainLoopEvent::MessageReceived((
                         msg,
@@ -400,6 +336,37 @@ impl IdleBleService {
                     .map_err(|err| error!("{:#?}", err));
             }
         });
+    }
+}
+
+impl StartedBleService {
+    pub async fn direct_send(
+        &self,
+        direct_send_request: &BleDirectSend,
+    ) -> Result<(), Box<dyn Error>> {
+        let addr_loopup = self.address_lookup.borrow();
+        let recipient = addr_loopup
+            .get(&direct_send_request.receiver_id)
+            .ok_or("Could not find a device address for the given qaul ID!")?;
+        let stringified_addr = mac_to_string(&recipient);
+        let device = self.adapter.device(recipient.to_owned())?;
+
+        if !device.is_connected().await? {
+            device.connect().await?;
+            info!("Connected to device {}", &stringified_addr);
+        }
+
+        for service in device.services().await? {
+            if service.uuid().await? == msg_service_uuid() {
+                for chara in service.characteristics().await? {
+                    if chara.uuid().await? == msg_char() {
+                        chara.write(&direct_send_request.data).await?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
