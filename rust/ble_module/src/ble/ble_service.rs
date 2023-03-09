@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, error::Error};
 
-use async_std::{channel::Sender, prelude::*, stream};
+use async_std::{channel::Sender, prelude::*};
 use bluer::{
     adv::{Advertisement, AdvertisementHandle},
     gatt::{local::*, CharacteristicReader},
@@ -228,7 +228,7 @@ impl IdleBleService {
                     );
                     send_direct_received(e.1 .0.to_vec(), e.0)
                 }
-                BleMainLoopEvent::MainCharEvent(e) => {
+                BleMainLoopEvent::MainCharEvent(_e) => {
                     // TODO: should main character events be sent to the UI?
                 }
                 BleMainLoopEvent::MsgCharEvent(e) => match e {

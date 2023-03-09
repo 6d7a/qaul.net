@@ -5,9 +5,9 @@ extern crate simplelog;
 mod ble;
 mod rpc;
 
-use ble::ble_service::QaulBleService;
+
 use filetime::FileTime;
-use rpc::{msg_loop::listen_for_sys_msgs, proto_sys::BleDirectSend};
+use rpc::{msg_loop::listen_for_sys_msgs};
 use simplelog::*;
 use std::{
     collections::BTreeMap,
