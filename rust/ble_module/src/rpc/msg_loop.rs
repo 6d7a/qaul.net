@@ -4,21 +4,18 @@ use async_std::task::spawn;
 use bytes::Bytes;
 
 use crate::{
-    ble::{
-        self,
-        ble_service::{get_device_info, QaulBleService},
-    },
+    ble::ble_service::{get_device_info, QaulBleService},
     rpc::{
-        proto_sys::{ble::Message::*, BleDeviceInfo},
+        proto_sys::ble::Message::*,
         utils::{
-            send_direct_send_success, send_result_already_running, send_result_not_running,
-            send_start_successful, send_direct_send_error,
+            send_direct_send_error, send_direct_send_success, send_result_already_running,
+            send_result_not_running, send_start_successful, send_stop_successful,
         },
         SysRpcReceiver,
     },
 };
 
-use super::{proto_sys::BleDirectSend, BleRpc};
+use super::BleRpc;
 
 pub async fn listen_for_sys_msgs(
     mut rpc_receiver: BleRpc,
@@ -51,7 +48,15 @@ pub async fn listen_for_sys_msgs(
                             send_result_already_running()
                         }
                     },
-                    StopRequest(_) => {}
+                    StopRequest(_) => match ble_service {
+                        QaulBleService::Started(svc) => {
+                            ble_service = svc.stop().await;
+                        }
+                        QaulBleService::Idle(_) => {
+                            warn!("Received Stop Request, but bluetooth service is not running!");
+                            send_stop_successful(); // Is this really a success case?
+                        }
+                    },
                     DirectSend(req) => match ble_service {
                         QaulBleService::Started(ref svc) => match svc.direct_send(&req).await {
                             Ok(_) => send_direct_send_success(req.receiver_id),

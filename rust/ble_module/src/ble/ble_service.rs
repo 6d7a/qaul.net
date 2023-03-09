@@ -368,6 +368,28 @@ impl StartedBleService {
 
         Ok(())
     }
+
+    pub async fn stop(self) -> QaulBleService {
+        if let Err(err) = self.stop_handle.send(true).await {
+            error!("Failed to stop bluetooth service: {:#?}", &err);
+            send_stop_unsuccessful(err.to_string());
+            return QaulBleService::Started(self);
+        }
+
+        for handle in self.ble_handles {
+            drop(handle)
+        }
+
+        send_stop_successful();
+
+        QaulBleService::Idle(IdleBleService {
+            ble_handles: vec![],
+            adapter: self.adapter,
+            session: self.session,
+            device_block_list: self.device_block_list,
+            address_lookup: self.address_lookup,
+        })
+    }
 }
 
 pub async fn get_device_info() -> Result<(), Box<dyn Error>> {

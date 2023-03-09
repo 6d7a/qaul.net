@@ -99,14 +99,6 @@ async fn main() {
         std::process::exit(1);
     });
 
-    // match ble_service {
-    //     QaulBleService::Idle(srv) => {
-    //         srv.advertise_scan_listen(bytes::Bytes::from(&b"Test"[..]), None)
-    //             .await;
-    //     }
-    //     QaulBleService::Started(_) => (),
-    // }
-
     listen_for_sys_msgs(rpc_receiver, ble_service).await.unwrap_or_else(|err| {
         error!("{:#?}", err);
         std::process::exit(1);

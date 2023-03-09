@@ -56,3 +56,15 @@ pub fn send_direct_send_error(id: Vec<u8>, error_message: String) {
         proto_sys::BleDirectSendResult { id, success: false, error_message },
     ))
 }
+
+pub fn send_stop_unsuccessful(error_message: String) {
+    send_ble_sys_msg(proto_sys::ble::Message::StopResult(
+        proto_sys::BleStopResult { success: false, error_reason: 0, error_message  },
+    ))
+}
+
+pub fn send_stop_successful() {
+    send_ble_sys_msg(proto_sys::ble::Message::StopResult(
+        proto_sys::BleStopResult { success: true, error_reason: 0, error_message: "".into()  },
+    ))
+}
